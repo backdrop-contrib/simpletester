@@ -118,6 +118,7 @@ function simpletester_run_tests($test_list, $tests, $reporter = 'backdrop') {
   $first_instance = new $first_test();
   array_unshift($test_list, $first_test);
   $info = simpletest_test_get_by_class(get_class($first_instance));
+  $test_count = format_plural(count($tests), '1 test', '@count tests');
 
   $batch = array(
     'title' => t('Running tests'),
@@ -127,7 +128,7 @@ function simpletester_run_tests($test_list, $tests, $reporter = 'backdrop') {
     'finished' => '_simpletester_batch_finished',
     'progress_message' => '',
     'css' => array(backdrop_get_path('module', 'simpletest') . '/css/simpletest.css'),
-    'init_message' => t('Processing test @num of @max - %test.', array('%test' => $info['name'], '@num' => '1', '@max' => count($test_list))),
+    'init_message' => t('Processing @test_count from %test.', array('%test' => $info['name'], '@test_count' => $test_count)),
   );
   batch_set($batch);
 
