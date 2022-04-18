@@ -118,8 +118,8 @@ function theme_simpletester_test_table($variables) {
     backdrop_sort($element, array('#title' => SORT_STRING));
 
     // Cycle through each test within the current group.
-    foreach (element_children($element) as $test_name) {
-      $test = $element[$test_name];
+    foreach (element_children($element) as $test_class_name) {
+      $test = $element[$test_class_name];
       $row = array();
 
       // Store test title and description so that checkbox won't render them.
@@ -134,7 +134,7 @@ function theme_simpletester_test_table($variables) {
         'class' => array('simpletest-test-select'),
       );
       $row[] = array(
-        'data' => '<label for="' . $test['#id'] . '">' . $title . '</label><span class="description test-name"> (' . $test_name . ')</span>',
+        'data' => '<label for="' . $test['#id'] . '">' . $title . '</label><span class="description test-name"> (' . $test_class_name . ')</span>',
         'class' => array('simpletest-test-label'),
       );
       $row[] = array(
@@ -145,7 +145,7 @@ function theme_simpletester_test_table($variables) {
         '#type' => 'item',
         '#markup' => l(
           t('Choose tests'),
-          'admin/config/development/simpletester/' . $test_name,
+          'admin/config/development/simpletester/' . $test_class_name,
           array(
             'attributes' => array(
               'class' => array('use-ajax block-item'),
@@ -178,11 +178,11 @@ function theme_simpletester_test_table($variables) {
 /**
  * List all test methods in a chosen test class. Displayed in dialog.
  */
-function simpletester_choose_form($form, &$form_state, $test_name) {
-  $form_state['test_name'] = $test_name;
-  $test_info = simpletest_test_get_by_class($test_name);
+function simpletester_choose_form($form, &$form_state, $test_class_name) {
+  $form_state['test_class_name'] = $test_class_name;
+  $test_info = simpletest_test_get_by_class($test_class_name);
   include_once BACKDROP_ROOT . '/' .  $test_info['file path'] . '/' . $test_info['file'];
-  $test_instance = new $test_name();
+  $test_instance = new $test_class_name();
 
   $this_test = get_class($test_instance);
   $class_methods = get_class_methods($this_test);
@@ -223,16 +223,21 @@ function simpletester_choose_form($form, &$form_state, $test_name) {
  */
 function simpletester_test_form_submit($form, &$form_state) {
   $tests = array_values(array_filter($form_state['values']['tests']));
-  $test_id = simpletester_run_tests(array($form_state['test_name']), $tests);
+  $test_id = simpletester_run_tests($form_state['test_class_name'], $tests);
 }
 
 /**
  * Copy of simpletest_run_tests().
  *
- * @param $test_list
- *   List of tests to run.
+ * @param $test_class_name
+ *   The test class.
+ * @param $tests
+ *   Test methods within the test class.
  */
-function simpletester_run_tests($test_list, $tests) {
+function simpletester_run_tests($test_class_name, $tests) {
+  // Simpletest batch operations and hooks expect a list of tests.
+  $test_list = array($test_class_name);
+
   $test_id = db_query("SELECT MAX(test_id) FROM {simpletest_prefix}")->fetchField() + 1;
 
   // Clear out the previous verbose files.
@@ -257,7 +262,6 @@ function simpletester_run_tests($test_list, $tests) {
     }
   }
 
-  // Get the info for the first test being run.
   $first_test = array_shift($test_list);
   $test_info = simpletest_test_get_by_class($first_test);
   include_once BACKDROP_ROOT . '/' .  $test_info['file path'] . '/' . $test_info['file'];
