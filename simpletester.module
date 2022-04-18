@@ -6,7 +6,7 @@
  */
 function simpletester_menu() {
   $items['admin/config/development/simpletester/%'] = array(
-    'title' => 'Choose test',
+    'title' => 'Choose tests',
     'page callback' => 'backdrop_get_form',
     'page arguments' => array('simpletester_choose_form', 4),
     'description' => 'Choose tests.',
@@ -55,7 +55,7 @@ function simpletester_choose_form($form, &$form_state, $test_name) {
   );
   $form['choose-test-wrapper']['tests'] = array(
     '#type' => 'checkboxes',
-    '#title' => t('Choose tests'),
+    '#title' => t('Available tests:'),
     '#options' => $tests,
   );
 
@@ -252,7 +252,7 @@ function theme_simpletester_test_table($variables) {
     array('class' => array('select-all')),
     array('data' => t('Test'), 'class' => array('simpletest-test')),
     array('data' => t('Description'), 'class' => array('simpletest_description')),
-    array('data' => t('Choose test'), 'class' => array('simpletest_choose_test')),
+    array('data' => '', 'class' => array('simpletest_choose_test')),
   );
 
   // Define the images used to expand/collapse the test groups.
@@ -330,7 +330,7 @@ function theme_simpletester_test_table($variables) {
       $choose_link = array(
         '#type' => 'item',
         '#markup' => l(
-          t('Pick test'),
+          t('Choose tests'),
           'admin/config/development/simpletester/' . $test_name,
           array(
             'attributes' => array(
