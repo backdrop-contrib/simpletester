@@ -27,201 +27,14 @@ function simpletester_theme() {
   );
 }
 
-
 /**
- * List tests arranged in groups that can be selected and run.
+ * Implements hook_form_FORM_ID_alter().
  */
-function simpletester_choose_form($form, &$form_state, $test_name) {
-  $form_state['test_name'] = $test_name;
-  $test_info = simpletest_test_get_by_class($test_name);
-  include_once BACKDROP_ROOT . '/' .  $test_info['file path'] . '/' . $test_info['file'];
-  $first_instance = new $test_name();
-
-  $this_test = get_class($first_instance);
-  $class_methods = get_class_methods($this_test);
-
-  $tests = array();
-    foreach ($class_methods as $method) {
-      if (strtolower(substr($method, 0, 4)) == 'test') {
-        $tests[$method] = $method;
-      }
-    }
-
-  $form['choose-test-wrapper'] = array(
-    '#type' => 'fieldset',
-    '#attributes' => array(
-      'class' => array('table-filter', 'js-show'),
-    ),
-  );
-  $form['choose-test-wrapper']['tests'] = array(
-    '#type' => 'checkboxes',
-    '#title' => t('Available tests:'),
-    '#options' => $tests,
-  );
-
-  $form['actions']['#type'] = 'actions';
-  $form['actions']['submit'] = array(
-    '#type' => 'submit',
-    '#submit' => array(
-      'simpletester_test_form_submit',
-    ),
-    '#value' => t('Run tests'),
-  );
-
-  return $form;
-}
-
-
-/**
- * Run selected tests.
- */
-function simpletester_test_form_submit($form, &$form_state) {
-  $tests = array_values(array_filter($form_state['values']['tests']));
-  $test_id = simpletester_run_tests(array($form_state['test_name']), $tests);
-}
-
-/**
- * Actually runs tests.
- *
- * @param $test_list
- *   List of tests to run.
- */
-function simpletester_run_tests($test_list, $tests, $reporter = 'backdrop') {
-  $reporter = 'backdrop';
-  $test_id = db_query("SELECT MAX(test_id) FROM {simpletest_prefix}")->fetchField() + 1;
-
-  // Clear out the previous verbose files.
-  if (file_exists('public://simpletest/verbose')) {
-    file_unmanaged_delete_recursive('public://simpletest/verbose');
-  }
-
-  $cache = config_get('simpletest.settings', 'simpletest_cache');
-  if ($cache) {
-    $profiles = simpletest_get_profiles();
-    foreach ($profiles as $profile) {
-      try {
-        $test_cache = new BackdropWebTestCaseCache();
-        $test_cache->setProfile($profile->name);
-        if (!$test_cache->isCached()) {
-          $test_cache->prepareCache(TRUE);
-        }
-      }
-      catch (Exception $e) {
-        watchdog_exception('simpletest', $e, $e->getMessage());
-      }
-    }
-  }
-
-  // Get the info for the first test being run.
-  $first_test = array_shift($test_list);
-  $test_info = simpletest_test_get_by_class($first_test);
-  include_once BACKDROP_ROOT . '/' .  $test_info['file path'] . '/' . $test_info['file'];
-  $first_instance = new $first_test();
-  array_unshift($test_list, $first_test);
-  $info = simpletest_test_get_by_class(get_class($first_instance));
-  $test_count = format_plural(count($tests), '1 test', '@count tests');
-
-  $batch = array(
-    'title' => t('Running tests'),
-    'operations' => array(
-      array('_simpletester_batch_operation', array($test_list, $test_id, $tests)),
-    ),
-    'finished' => '_simpletester_batch_finished',
-    'progress_message' => '',
-    'css' => array(backdrop_get_path('module', 'simpletest') . '/css/simpletest.css'),
-    'init_message' => t('Processing @test_count from %test.', array('%test' => $info['name'], '@test_count' => $test_count)),
-  );
-  batch_set($batch);
-
-  batch_process('admin/config/development/testing/results/' . $test_id);
-
-  module_invoke_all('test_group_started');
-
-  return $test_id;
-}
-
-/**
- * Batch operation callback.
- */
-function _simpletester_batch_operation($test_list_init, $test_id, $tests, &$context) {
-  // Get working values.
-
-  if (!isset($context['sandbox']['max'])) {
-    // First iteration: initialize working values.
-    $test_list = $test_list_init;
-    $context['sandbox']['max'] = count($test_list);
-    $test_results = array('#pass' => 0, '#fail' => 0, '#exception' => 0, '#debug' => 0, '#duration' => 0);
-  }
-  else {
-    // Nth iteration: get the current values where we last stored them.
-    $test_list = $context['sandbox']['tests'];
-    $test_results = $context['sandbox']['test_results'];
-  }
-  $max = $context['sandbox']['max'];
-
-  // Perform the next test.
-  $test_class = array_shift($test_list);
-  $test_info = simpletest_test_get_by_class($test_class);
-  include_once BACKDROP_ROOT . '/' . $test_info['file path'] . '/' . $test_info['file'];
-  $test = new $test_class($test_id);
-  $test->run($tests);
-  $size = count($test_list);
-  $info = simpletest_test_get_by_class(get_class($test));
-
-  module_invoke_all('test_finished', $test->results);
-
-  // Gather results and compose the report.
-  $test_results[$test_class] = $test->results;
-  foreach ($test_results[$test_class] as $key => $value) {
-    $test_results[$key] += $value;
-  }
-  $test_results[$test_class]['#name'] = $info['name'];
-  $items = array();
-  foreach (element_children($test_results) as $class) {
-    array_unshift($items, '<div class="simpletest-' . ($test_results[$class]['#fail'] + $test_results[$class]['#exception'] ? 'fail' : 'pass') . '">' . t('@name: @summary', array('@name' => $test_results[$class]['#name'], '@summary' => _simpletest_format_summary_line($test_results[$class]))) . '</div>');
-  }
-  $context['message'] = t('Processed test @num of @max - %test.', array('%test' => $info['name'], '@num' => $max - $size, '@max' => $max));
-  $context['message'] .= '<div class="simpletest-' . ($test_results['#fail'] + $test_results['#exception'] ? 'fail' : 'pass') . '">Overall results: ' . _simpletest_format_summary_line($test_results) . '</div>';
-  $context['message'] .= theme('item_list', array('items' => $items));
-
-  // Save working values for the next iteration.
-  $context['sandbox']['tests'] = $test_list;
-  $context['sandbox']['test_results'] = $test_results;
-  // The test_id is the only thing we need to save for the report page.
-  $context['results']['test_id'] = $test_id;
-
-  // Multistep processing: report progress.
-  $context['finished'] = 1 - $size / $max;
-}
-
-
-function _simpletester_batch_finished($success, $results, $operations, $elapsed) {
-  if ($success) {
-    backdrop_set_message(t('The test run finished in @elapsed.', array('@elapsed' => $elapsed)));
-  }
-  else {
-    // If any uncompleted operations are left, we can use the next item to pull
-    // the test_id and report any errors from the test log.
-    if (!empty($operations)) {
-      // Use the test_id passed as a parameter to _simpletest_batch_operation().
-      $next_operation = reset($operations);
-      $test_id = $next_operation[1][1];
-
-      // Retrieve the last database prefix used for testing and the last test
-      // class that was run from. Use the information to read the lgo file
-      // in case any fatal errors caused the test to crash.
-      list($last_prefix, $last_test_class) = simpletest_last_test_get($test_id);
-      simpletest_log_read($test_id, $last_prefix, $last_test_class);
-    }
-
-    backdrop_set_message(t('The test run did not successfully finish.'), 'error');
-    backdrop_set_message(t('Use the <em>Clean environment</em> button to clean-up temporary files and tables.'), 'warning');
-  }
-  module_invoke_all('test_group_finished');
-}
-
 function simpletester_form_simpletest_test_form_alter(&$form, &$form_state, $form_id) {
+  // Override simpletest_test_form() so we can add links to choose tests.
   $form['tests']['table']['#theme'] = 'simpletester_test_table';
+
+  // Attach dialog library.
   $form['#attached'] = array(
     'library' => array(
       array('system', 'backdrop.ajax'),
@@ -230,9 +43,10 @@ function simpletester_form_simpletest_test_form_alter(&$form, &$form_state, $for
   );
 }
 
-
 /**
  * Returns HTML for a test list generated by simpletest_test_form() into a table.
+ *
+ * This is a copy of theme_simpletest_test_table().
  *
  * @param $variables
  *   An associative array containing:
@@ -359,4 +173,200 @@ function theme_simpletester_test_table($variables) {
   else {
     return theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'simpletest-form-table')));
   }
+}
+
+/**
+ * List all test methods in a chosen test class. Displayed in dialog.
+ */
+function simpletester_choose_form($form, &$form_state, $test_name) {
+  $form_state['test_name'] = $test_name;
+  $test_info = simpletest_test_get_by_class($test_name);
+  include_once BACKDROP_ROOT . '/' .  $test_info['file path'] . '/' . $test_info['file'];
+  $test_instance = new $test_name();
+
+  $this_test = get_class($test_instance);
+  $class_methods = get_class_methods($this_test);
+
+  $tests = array();
+    foreach ($class_methods as $method) {
+      if (strtolower(substr($method, 0, 4)) == 'test') {
+        $tests[$method] = $method;
+      }
+    }
+
+  $form['choose-test-wrapper'] = array(
+    '#type' => 'fieldset',
+    '#attributes' => array(
+      'class' => array('choose-test-wrapper'),
+    ),
+  );
+  $form['choose-test-wrapper']['tests'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Available tests:'),
+    '#options' => $tests,
+  );
+
+  $form['actions']['#type'] = 'actions';
+  $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#submit' => array(
+      'simpletester_test_form_submit',
+    ),
+    '#value' => t('Run tests'),
+  );
+
+  return $form;
+}
+
+/**
+ * Submit handler for simpletester_choose_form().
+ */
+function simpletester_test_form_submit($form, &$form_state) {
+  $tests = array_values(array_filter($form_state['values']['tests']));
+  $test_id = simpletester_run_tests(array($form_state['test_name']), $tests);
+}
+
+/**
+ * Copy of simpletest_run_tests().
+ *
+ * @param $test_list
+ *   List of tests to run.
+ */
+function simpletester_run_tests($test_list, $tests) {
+  $test_id = db_query("SELECT MAX(test_id) FROM {simpletest_prefix}")->fetchField() + 1;
+
+  // Clear out the previous verbose files.
+  if (file_exists('public://simpletest/verbose')) {
+    file_unmanaged_delete_recursive('public://simpletest/verbose');
+  }
+
+  $cache = config_get('simpletest.settings', 'simpletest_cache');
+  if ($cache) {
+    $profiles = simpletest_get_profiles();
+    foreach ($profiles as $profile) {
+      try {
+        $test_cache = new BackdropWebTestCaseCache();
+        $test_cache->setProfile($profile->name);
+        if (!$test_cache->isCached()) {
+          $test_cache->prepareCache(TRUE);
+        }
+      }
+      catch (Exception $e) {
+        watchdog_exception('simpletest', $e, $e->getMessage());
+      }
+    }
+  }
+
+  // Get the info for the first test being run.
+  $first_test = array_shift($test_list);
+  $test_info = simpletest_test_get_by_class($first_test);
+  include_once BACKDROP_ROOT . '/' .  $test_info['file path'] . '/' . $test_info['file'];
+  $test_instance = new $first_test();
+  array_unshift($test_list, $first_test);
+  $info = simpletest_test_get_by_class(get_class($test_instance));
+  $test_count = format_plural(count($tests), '1 test', '@count tests');
+
+  $batch = array(
+    'title' => t('Running tests'),
+    'operations' => array(
+      array('_simpletester_batch_operation', array($test_list, $test_id, $tests)),
+    ),
+    'finished' => '_simpletester_batch_finished',
+    'progress_message' => '',
+    'css' => array(backdrop_get_path('module', 'simpletest') . '/css/simpletest.css'),
+    'init_message' => t('Processing @test_count from %test.', array('%test' => $info['name'], '@test_count' => $test_count)),
+  );
+  batch_set($batch);
+
+  batch_process('admin/config/development/testing/results/' . $test_id);
+
+  module_invoke_all('test_group_started');
+
+  return $test_id;
+}
+
+/**
+ * Batch operation callback.
+ *
+ * Copy of _simpletest_batch_operation().
+ */
+function _simpletester_batch_operation($test_list_init, $test_id, $tests, &$context) {
+  // Get working values.
+
+  if (!isset($context['sandbox']['max'])) {
+    // First iteration: initialize working values.
+    $test_list = $test_list_init;
+    $context['sandbox']['max'] = count($test_list);
+    $test_results = array('#pass' => 0, '#fail' => 0, '#exception' => 0, '#debug' => 0, '#duration' => 0);
+  }
+  else {
+    // Nth iteration: get the current values where we last stored them.
+    $test_list = $context['sandbox']['tests'];
+    $test_results = $context['sandbox']['test_results'];
+  }
+  $max = $context['sandbox']['max'];
+
+  // Perform the next test.
+  $test_class = array_shift($test_list);
+  $test_info = simpletest_test_get_by_class($test_class);
+  include_once BACKDROP_ROOT . '/' . $test_info['file path'] . '/' . $test_info['file'];
+  $test = new $test_class($test_id);
+  $test->run($tests);
+  $size = count($test_list);
+  $info = simpletest_test_get_by_class(get_class($test));
+
+  module_invoke_all('test_finished', $test->results);
+
+  // Gather results and compose the report.
+  $test_results[$test_class] = $test->results;
+  foreach ($test_results[$test_class] as $key => $value) {
+    $test_results[$key] += $value;
+  }
+  $test_results[$test_class]['#name'] = $info['name'];
+  $items = array();
+  foreach (element_children($test_results) as $class) {
+    array_unshift($items, '<div class="simpletest-' . ($test_results[$class]['#fail'] + $test_results[$class]['#exception'] ? 'fail' : 'pass') . '">' . t('@name: @summary', array('@name' => $test_results[$class]['#name'], '@summary' => _simpletest_format_summary_line($test_results[$class]))) . '</div>');
+  }
+  $context['message'] = t('Processed test @num of @max - %test.', array('%test' => $info['name'], '@num' => $max - $size, '@max' => $max));
+  $context['message'] .= '<div class="simpletest-' . ($test_results['#fail'] + $test_results['#exception'] ? 'fail' : 'pass') . '">Overall results: ' . _simpletest_format_summary_line($test_results) . '</div>';
+  $context['message'] .= theme('item_list', array('items' => $items));
+
+  // Save working values for the next iteration.
+  $context['sandbox']['tests'] = $test_list;
+  $context['sandbox']['test_results'] = $test_results;
+  // The test_id is the only thing we need to save for the report page.
+  $context['results']['test_id'] = $test_id;
+
+  // Multistep processing: report progress.
+  $context['finished'] = 1 - $size / $max;
+}
+
+/**
+ * Batch operation finished callback.
+ *
+ * Copy of _simpletest_batch_finished().
+ */
+function _simpletester_batch_finished($success, $results, $operations, $elapsed) {
+  if ($success) {
+    backdrop_set_message(t('The test run finished in @elapsed.', array('@elapsed' => $elapsed)));
+  }
+  else {
+    // If any uncompleted operations are left, we can use the next item to pull
+    // the test_id and report any errors from the test log.
+    if (!empty($operations)) {
+      // Use the test_id passed as a parameter to _simpletest_batch_operation().
+      $next_operation = reset($operations);
+      $test_id = $next_operation[1][1];
+
+      // Retrieve the last database prefix used for testing and the last test
+      // class that was run from. Use the information to read the lgo file
+      // in case any fatal errors caused the test to crash.
+      list($last_prefix, $last_test_class) = simpletest_last_test_get($test_id);
+      simpletest_log_read($test_id, $last_prefix, $last_test_class);
+    }
+
+    backdrop_set_message(t('The test run did not successfully finish.'), 'error');
+    backdrop_set_message(t('Use the <em>Clean environment</em> button to clean-up temporary files and tables.'), 'warning');
+  }
+  module_invoke_all('test_group_finished');
 }
