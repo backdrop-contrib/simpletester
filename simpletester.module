@@ -38,7 +38,6 @@ function simpletester_choose_form($form, &$form_state, $test_name) {
   $first_instance = new $test_name();
 
   $this_test = get_class($first_instance);
-  // $info = simpletest_test_get_by_class(get_class($first_instance));
   $class_methods = get_class_methods($this_test);
 
   $tests = array();
@@ -55,7 +54,7 @@ function simpletester_choose_form($form, &$form_state, $test_name) {
     ),
   );
   $form['filter']['tests'] = array(
-    '#type' => 'radios',
+    '#type' => 'checkboxes',
     '#title' => t('Choose tests'),
     '#options' => $tests,
   );
@@ -76,17 +75,8 @@ function simpletester_choose_form($form, &$form_state, $test_name) {
  * Run selected tests.
  */
 function simpletester_test_form_submit($form, &$form_state) {
-
-  $test_id = simpletester_run_tests(array($form_state['test_name']), $form_state['values']['tests']);
-  $form_state['redirect'] = 'admin/config/development/testing/results/' . $test_id;
-  // $tests_list = array_keys(array_filter($form_state['values']['tests']));
-  // if (count($tests_list) > 0 ) {
-    // $test_id = simpletester_run_tests($tests_list, 'backdrop');
-    // $form_state['redirect'] = 'admin/config/development/testing/results/' . $test_id;
-  // }
-  // else {
-    // backdrop_set_message(t('No test(s) selected.'), 'error');
-  // }
+  $tests = array_values(array_filter($form_state['values']['tests']));
+  $test_id = simpletester_run_tests(array($form_state['test_name']), $tests);
 }
 
 /**
@@ -130,7 +120,6 @@ function simpletester_run_tests($test_list, $tests, $reporter = 'backdrop') {
   $info = simpletest_test_get_by_class(get_class($first_instance));
 
   $batch = array(
-    // 'file' => backdrop_get_path('module', 'simpletester'),
     'title' => t('Running tests'),
     'operations' => array(
       array('_simpletester_batch_operation', array($test_list, $test_id, $tests)),
@@ -173,7 +162,7 @@ function _simpletester_batch_operation($test_list_init, $test_id, $tests, &$cont
   $test_info = simpletest_test_get_by_class($test_class);
   include_once BACKDROP_ROOT . '/' . $test_info['file path'] . '/' . $test_info['file'];
   $test = new $test_class($test_id);
-  $test->run(array($tests));
+  $test->run($tests);
   $size = count($test_list);
   $info = simpletest_test_get_by_class(get_class($test));
 
