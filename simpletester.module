@@ -47,19 +47,20 @@ function simpletester_choose_form($form, &$form_state, $test_name) {
       }
     }
 
-  $form['filter'] = array(
-    '#type' => 'container',
+  $form['choose-test-wrapper'] = array(
+    '#type' => 'fieldset',
     '#attributes' => array(
       'class' => array('table-filter', 'js-show'),
     ),
   );
-  $form['filter']['tests'] = array(
+  $form['choose-test-wrapper']['tests'] = array(
     '#type' => 'checkboxes',
     '#title' => t('Choose tests'),
     '#options' => $tests,
   );
 
-  $form['submit'] = array(
+  $form['actions']['#type'] = 'actions';
+  $form['actions']['submit'] = array(
     '#type' => 'submit',
     '#submit' => array(
       'simpletester_test_form_submit',
@@ -221,12 +222,12 @@ function _simpletester_batch_finished($success, $results, $operations, $elapsed)
 
 function simpletester_form_simpletest_test_form_alter(&$form, &$form_state, $form_id) {
   $form['tests']['table']['#theme'] = 'simpletester_test_table';
-  // $form['#attached'] = array(
-    // 'library' => array(
-      // array('system', 'backdrop.ajax'),
-      // array('system', 'backdrop.dialog'),
-    // ),
-  // );
+  $form['#attached'] = array(
+    'library' => array(
+      array('system', 'backdrop.ajax'),
+      array('system', 'backdrop.dialog'),
+    ),
+  );
 }
 
 
@@ -335,12 +336,11 @@ function theme_simpletester_test_table($variables) {
             'attributes' => array(
               'class' => array('use-ajax block-item'),
               'data-dialog' => TRUE,
-              'data-dialog-options' => json_encode(array('dialogClass' => 'layout-dialog')),
+              'data-dialog-options' => json_encode(array('dialogClass' => 'simpletester-dialog', 'width' => 500)),
             )
           )
         ),
         '#description' => NULL,
-        '#wrapper_attributes' => array('class' => array('layout-block-add-row'))
       );
 
       $row[] = array(
