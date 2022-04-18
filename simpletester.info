@@ -1,0 +1,4 @@
+name = Simple Tester
+description = Allow to run individual Simpletests through the UI.
+backdrop = 1.x
+type = module
