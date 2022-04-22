@@ -212,10 +212,23 @@ function simpletester_choose_form($form, &$form_state, $test_class_name) {
     '#submit' => array(
       'simpletester_test_form_submit',
     ),
+    '#validate' => array(
+      'simpletester_test_form_validate',
+    ),
     '#value' => t('Run tests'),
   );
 
   return $form;
+}
+
+/**
+ * Submit handler for simpletester_choose_form().
+ */
+function simpletester_test_form_validate($form, &$form_state) {
+  if (empty(array_values(array_filter($form_state['values']['tests'])))) {
+    backdrop_set_message(t('No tests were selected.'), 'error');
+    backdrop_goto('admin/config/development/testing');
+  }
 }
 
 /**
