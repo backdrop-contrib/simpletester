@@ -41,6 +41,50 @@ function simpletester_form_simpletest_test_form_alter(&$form, &$form_state, $for
       array('system', 'backdrop.dialog'),
     ),
   );
+  unset($_SESSION['simpletester_running_tests']);
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function simpletester_form_simpletest_result_form_alter(&$form, &$form_state, $form_id) {
+  if (!empty($_SESSION['simpletester_running_tests'])) {
+    $form_state['simpletester_running_tests'] = $_SESSION['simpletester_running_tests'];
+    $form['help'] = array(
+      '#markup' => 'Running one test yo',
+      '#weight' => -999,
+    );
+    backdrop_set_message('yo', 'info');
+
+    $form['action']['filter']['#options'] = array('subtests' => t('Selected test cases'));
+    $form['action']['filter']['#default_value'] = 'subtests';
+    $form['#submit'] = array('simpletester_result_form_submit');
+  }
+}
+
+/**
+ * Re-run the tests that match the filter.
+ */
+function simpletester_result_form_submit($form, &$form_state) {
+  $pass = $form_state['values']['filter_pass'] ? explode(',', $form_state['values']['filter_pass']) : array();
+  $fail = $form_state['values']['filter_fail'] ? explode(',', $form_state['values']['filter_fail']) : array();
+
+  $classes = array_merge($pass, $fail);
+  if (!$classes) {
+    $form_state['redirect'] = 'admin/config/development/testing';
+    return;
+  }
+  if (empty($form_state['simpletester_running_tests'])) {
+    $form_state['redirect'] = 'admin/config/development/testing';
+    return;
+  }
+
+  $form_state_execute = array('values' => array());
+  $form_state_execute['test_class_name'] = reset($classes);
+  $form_state_execute['values']['tests'] = $form_state['simpletester_running_tests'];
+
+  simpletester_test_form_submit(array(), $form_state_execute);
+  $form_state['redirect'] = '';
 }
 
 /**
@@ -236,6 +280,7 @@ function simpletester_test_form_validate($form, &$form_state) {
  */
 function simpletester_test_form_submit($form, &$form_state) {
   $tests = array_values(array_filter($form_state['values']['tests']));
+  $_SESSION['simpletester_running_tests'] = $tests;
   $test_id = simpletester_run_tests($form_state['test_class_name'], $tests);
 }
 
