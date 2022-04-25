@@ -51,10 +51,11 @@ function simpletester_form_simpletest_result_form_alter(&$form, &$form_state, $f
   if (!empty($_SESSION['simpletester_running_tests'])) {
     $form_state['simpletester_running_tests'] = $_SESSION['simpletester_running_tests'];
     $form['help'] = array(
-      '#markup' => 'Running one test yo',
+      '#markup' => theme('item_list', array(
+        'items' => $_SESSION['simpletester_running_tests'],
+        'title' => t('The following test cases were run:'))),
       '#weight' => -999,
     );
-    backdrop_set_message('yo', 'info');
 
     $form['action']['filter']['#options'] = array('subtests' => t('Selected test cases'));
     $form['action']['filter']['#default_value'] = 'subtests';
